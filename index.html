@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MU Online — Event Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #07080f;
+  --surface:  #0d1020;
+  --surface2: #111628;
+  --border:   rgba(255,255,255,0.07);
+
+  --gold:   #f0c060;
+  --gold2:  #ffaa00;
+  --red:    #e83040;
+  --blue:   #3090ff;
+  --green:  #30e890;
+  --purple: #c060ff;
+  --orange: #ff7020;
+  --cyan:   #20d8e8;
+  --pink:   #ff4090;
+
+  --text:    #dde0f0;
+  --text-dim: rgba(221,224,240,0.4);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Noise overlay ── */
+body::before {
+  content:'';position:fixed;inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 200px;
+  pointer-events:none;z-index:0;opacity:.6;
+}
+
+/* ── Top bar ── */
+.topbar {
+  position: sticky; top:0; z-index:50;
+  background: rgba(7,8,15,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; gap: 20px;
+  height: 56px;
+}
+.topbar-title {
+  font-family: 'Cinzel', serif;
+  font-size: 15px; font-weight: 900;
+  letter-spacing: 3px;
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(240,192,96,0.5);
+  white-space: nowrap;
+}
+.topbar-clock {
+  font-size: 13px; letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-left: auto;
+  display: flex; align-items: center; gap: 16px;
+}
+.topbar-clock span { color: var(--text); }
+.tz-badge {
+  font-size: 9px; letter-spacing: 2px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  color: var(--text-dim);
+}
+.sound-btn {
+  background: none; border: 1px solid var(--border);
+  border-radius: 3px; padding: 5px 12px;
+  color: var(--text-dim); font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; letter-spacing: 2px; cursor: pointer;
+  transition: all .2s;
+}
+.sound-btn:hover, .sound-btn.on { color: var(--green); border-color: rgba(48,232,144,0.4); }
+.sound-btn.on { background: rgba(48,232,144,0.06); }
+
+/* ── Layout ── */
+.layout {
+  position: relative; z-index:1;
+  max-width: 1200px; margin: 0 auto;
+  padding: 24px 20px;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 20px;
+}
+@media(max-width:900px){.layout{grid-template-columns:1fr;}}
+
+/* ── Panels ── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.panel-head {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  font-size: 9px; letter-spacing: 4px; color: var(--text-dim);
+  text-transform: uppercase;
+}
+.panel-head .accent { width: 3px; height: 14px; border-radius: 2px; }
+
+/* ── Countdown panel ── */
+.countdown-big {
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.next-label { font-size: 9px; letter-spacing: 3px; color: var(--text-dim); margin-bottom: 6px; }
+.next-name {
+  font-family: 'Cinzel', serif;
+  font-size: 18px; font-weight: 600;
+  margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.next-meta { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 14px; }
+.countdown-digits {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 44px; letter-spacing: 4px;
+  line-height:1;
+}
+.progress-track {
+  margin-top: 12px; height: 2px;
+  background: rgba(255,255,255,0.06); border-radius: 2px;
+}
+.progress-fill {
+  height:100%; border-radius:2px;
+  transition: width 1s linear;
+}
+
+/* ── Upcoming list ── */
+.upcoming-list { padding: 4px 0; max-height: 420px; overflow-y:auto; }
+.upcoming-list::-webkit-scrollbar{width:4px;}
+.upcoming-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px;}
+
+.upcoming-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background .15s;
+}
+.upcoming-item:hover { background: rgba(255,255,255,0.02); }
+.upcoming-item.is-next { background: rgba(255,255,255,0.03); }
+.upcoming-item.is-warn { background: rgba(255,170,0,0.04); }
+.ev-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ev-name { font-size: 12px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ev-loc { font-size:9px; color: var(--text-dim); letter-spacing:1px; }
+.ev-time-col { text-align:right; flex-shrink:0; }
+.ev-local-time { font-size: 13px; letter-spacing:1px; }
+.ev-countdown { font-size: 9px; color: var(--text-dim); margin-top:1px; }
+.ev-disabled { opacity: .3; }
+
+/* ── Right column ── */
+.right-col { display:flex; flex-direction:column; gap:20px; }
+
+/* ── Category filter tabs ── */
+.cat-tabs {
+  display: flex; gap: 6px; flex-wrap:wrap;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.cat-tab {
+  padding: 5px 14px; border-radius: 20px;
+  font-size: 9px; letter-spacing: 3px; cursor:pointer;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-dim);
+  transition: all .2s;
+}
+.cat-tab:hover { color: var(--text); }
+.cat-tab.active { color: #fff; }
+
+/* ── Event cards grid ── */
+.events-grid {
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.event-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 14px 16px;
+  position: relative;
+  transition: all .2s;
+  cursor: default;
+}
+.event-card:hover { border-color: rgba(255,255,255,0.12); }
+.event-card.disabled { opacity: .4; }
+.event-card.disabled .card-body { pointer-events:none; }
+
+.card-top {
+  display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;
+}
+.card-icon { font-size:22px; flex-shrink:0; line-height:1; }
+.card-info { flex:1; min-width:0; }
+.card-name {
+  font-family: 'Cinzel', serif;
+  font-size: 13px; font-weight:600;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.card-sub { font-size:9px; color: var(--text-dim); letter-spacing:1px; margin-top:2px; }
+.card-toggle {
+  width:32px; height:18px; border-radius:9px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  position:relative; cursor:pointer; flex-shrink:0;
+  transition: all .2s;
+}
+.card-toggle::after {
+  content:''; position:absolute;
+  width:12px; height:12px; border-radius:50%;
+  background: rgba(255,255,255,0.3);
+  top:2px; left:2px;
+  transition: all .2s;
+}
+.card-toggle.on { border-color: currentColor; }
+.card-toggle.on::after { left:16px; background: currentColor; }
+
+.card-times {
+  display:flex; flex-wrap:wrap; gap:4px;
+  margin-bottom: 8px;
+}
+.time-chip {
+  font-size: 10px; letter-spacing:1px;
+  padding: 2px 7px; border-radius:3px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all .2s;
+}
+.time-chip.soon { border-color: currentColor; }
+
+.card-footer {
+  display:flex; gap:12px;
+  font-size:9px; color: var(--text-dim); letter-spacing:1px;
+}
+
+/* ── Alert overlay ── */
+.alert-overlay {
+  display:none; position:fixed; inset:0; z-index:200;
+  background: rgba(0,0,0,0.8); backdrop-filter: blur(6px);
+  align-items:center; justify-content:center;
+}
+.alert-overlay.show { display:flex; }
+.alert-box {
+  width: min(420px,92vw);
+  background: var(--surface);
+  border-radius: 8px;
+  overflow:hidden;
+  box-shadow: 0 0 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.08);
+  animation: popIn .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popIn {
+  from{transform:scale(.85);opacity:0}
+  to{transform:scale(1);opacity:1}
+}
+.alert-banner {
+  padding: 6px 18px; font-size:9px; letter-spacing:4px;
+  text-align:center; font-weight:600;
+}
+.alert-body { padding: 28px 28px 24px; text-align:center; }
+.alert-icon { font-size: 52px; margin-bottom:12px; display:block;
+  animation: alertBounce .5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes alertBounce{from{transform:scale(0) rotate(-20deg)}to{transform:scale(1) rotate(0)}}
+.alert-event-name {
+  font-family:'Cinzel',serif; font-size:24px; font-weight:900;
+  letter-spacing:2px; margin-bottom:4px;
+}
+.alert-sub { font-size:11px; color:var(--text-dim); letter-spacing:2px; margin-bottom:6px; }
+.alert-time-display { font-size:28px; letter-spacing:4px; margin-bottom:20px; }
+.alert-dismiss {
+  padding: 12px 36px; border-radius:4px;
+  font-family:'Share Tech Mono',monospace; font-size:11px;
+  letter-spacing:4px; cursor:pointer; transition:all .2s;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text);
+}
+.alert-dismiss:hover { background: rgba(255,255,255,0.12); }
+
+/* ── Warning toast ── */
+.warn-toast {
+  position:fixed; bottom:24px; right:24px; z-index:100;
+  display:none; align-items:center; gap:12px;
+  background: var(--surface);
+  border: 1px solid rgba(255,170,0,0.3);
+  border-radius:6px; padding:14px 18px;
+  box-shadow: 0 0 30px rgba(255,170,0,0.1);
+  animation: slideIn .3s ease;
+  max-width: 300px;
+}
+.warn-toast.show { display:flex; }
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.warn-pulse {
+  width:10px; height:10px; border-radius:50%;
+  background: var(--gold2); flex-shrink:0;
+  box-shadow: 0 0 10px var(--gold2);
+  animation: warnPulse 1s infinite;
+}
+@keyframes warnPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+.warn-text { font-size:11px; }
+.warn-name { color: var(--gold2); font-size:12px; letter-spacing:1px; }
+.warn-mins { font-size:9px; color:var(--text-dim); margin-top:2px; letter-spacing:1px; }
+
+/* Color helpers */
+.c-gold   { color: var(--gold);   }
+.c-red    { color: var(--red);    }
+.c-blue   { color: var(--blue);   }
+.c-green  { color: var(--green);  }
+.c-purple { color: var(--purple); }
+.c-orange { color: var(--orange); }
+.c-cyan   { color: var(--cyan);   }
+.c-pink   { color: var(--pink);   }
+
+.bg-gold   { background: var(--gold);   }
+.bg-red    { background: var(--red);    }
+.bg-blue   { background: var(--blue);   }
+.bg-green  { background: var(--green);  }
+.bg-purple { background: var(--purple); }
+.bg-orange { background: var(--orange); }
+.bg-cyan   { background: var(--cyan);   }
+.bg-pink   { background: var(--pink);   }
+
+.border-gold   { border-color: rgba(240,192,96,0.4)!important;  background: rgba(240,192,96,0.07)!important; }
+.border-red    { border-color: rgba(232,48,64,0.4)!important;   background: rgba(232,48,64,0.07)!important; }
+.border-blue   { border-color: rgba(48,144,255,0.4)!important;  background: rgba(48,144,255,0.07)!important; }
+.border-green  { border-color: rgba(48,232,144,0.4)!important;  background: rgba(48,232,144,0.07)!important; }
+.border-purple { border-color: rgba(192,96,255,0.4)!important;  background: rgba(192,96,255,0.07)!important; }
+.border-orange { border-color: rgba(255,112,32,0.4)!important;  background: rgba(255,112,32,0.07)!important; }
+.border-cyan   { border-color: rgba(32,216,232,0.4)!important;  background: rgba(32,216,232,0.07)!important; }
+.border-pink   { border-color: rgba(255,64,144,0.4)!important;  background: rgba(255,64,144,0.07)!important; }
+
+.chip-gold   { background:rgba(240,192,96,.12);border-color:rgba(240,192,96,.25);color:var(--gold); }
+.chip-red    { background:rgba(232,48,64,.12);border-color:rgba(232,48,64,.25);color:var(--red); }
+.chip-blue   { background:rgba(48,144,255,.12);border-color:rgba(48,144,255,.25);color:var(--blue); }
+.chip-green  { background:rgba(48,232,144,.12);border-color:rgba(48,232,144,.25);color:var(--green); }
+.chip-purple { background:rgba(192,96,255,.12);border-color:rgba(192,96,255,.25);color:var(--purple); }
+.chip-orange { background:rgba(255,112,32,.12);border-color:rgba(255,112,32,.25);color:var(--orange); }
+.chip-cyan   { background:rgba(32,216,232,.12);border-color:rgba(32,216,232,.25);color:var(--cyan); }
+.chip-pink   { background:rgba(255,64,144,.12);border-color:rgba(255,64,144,.25);color:var(--pink); }
+
+/* Tab accent colors */
+.cat-tab[data-cat="all"].active    { background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff; }
+.cat-tab[data-cat="invasion"].active { background:rgba(240,192,96,.1);border-color:rgba(240,192,96,.4);color:var(--gold); }
+.cat-tab[data-cat="boss"].active   { background:rgba(232,48,64,.1);border-color:rgba(232,48,64,.4);color:var(--red); }
+.cat-tab[data-cat="minigame"].active { background:rgba(48,144,255,.1);border-color:rgba(48,144,255,.4);color:var(--blue); }
+.cat-tab[data-cat="special"].active{ background:rgba(192,96,255,.1);border-color:rgba(192,96,255,.4);color:var(--purple); }
+.cat-tab[data-cat="dreamland"].active{ background:rgba(32,216,232,.1);border-color:rgba(32,216,232,.4);color:var(--cyan); }
+
+.sep { width:1px; height:20px; background: var(--border); margin: 0 4px; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-title">⚔ MU ONLINE — EVENT ALERTS</div>
+  <div class="sep"></div>
+  <div class="tz-badge" id="tzBadge">LOCAL TZ</div>
+  <div class="topbar-clock">
+    <span>LOCAL <span id="localClock">--:--:--</span></span>
+    <span style="color:var(--text-dim)">|</span>
+    <span style="color:var(--text-dim)">SERVER <span id="serverClock" style="color:var(--text-dim)">--:--:--</span></span>
+  </div>
+  <button class="sound-btn on" id="soundBtn" onclick="toggleSound()">🔊 SOUND</button>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- LEFT: next up + upcoming -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Next event countdown -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="accent bg-gold"></div>
+        NEXT EVENT
+      </div>
+      <div class="countdown-big" id="nextEventPanel">
+        <div class="next-label">WAITING...</div>
+        <div class="next-name" id="nextName" style="color:var(--gold)">—</div>
+        <div class="next-meta" id="nextMeta">—</div>
+        <div class="countdown-digits" id="nextCountdown">--:--:--</div>
+        <div class="progress-track">
+          <div class="progress-fill bg-gold" id="nextProgress" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming list -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="accent bg-blue"></div>
+        NEXT 8 EVENTS
+      </div>
+      <div class="upcoming-list" id="upcomingList"></div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: event cards -->
+  <div class="right-col">
+    <div class="panel">
+      <div class="panel-head" style="justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="accent bg-purple"></div>
+          EVENTS &amp; ALERTS
+        </div>
+        <div style="font-size:9px;color:var(--text-dim);">
+          TOGGLE = ENABLE ALERT
+        </div>
+      </div>
+      <div class="cat-tabs" id="catTabs">
+        <div class="cat-tab active" data-cat="all" onclick="filterCat('all')">ALL</div>
+        <div class="cat-tab" data-cat="invasion" onclick="filterCat('invasion')">⚔ INVASION</div>
+        <div class="cat-tab" data-cat="boss" onclick="filterCat('boss')">💀 BOSS</div>
+        <div class="cat-tab" data-cat="minigame" onclick="filterCat('minigame')">🏰 MINI-GAME</div>
+        <div class="cat-tab" data-cat="special" onclick="filterCat('special')">👻 SPECIAL</div>
+        <div class="cat-tab" data-cat="dreamland" onclick="filterCat('dreamland')">🌸 DREAMLAND</div>
+      </div>
+      <div class="events-grid" id="eventsGrid"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ALERT OVERLAY -->
+<div class="alert-overlay" id="alertOverlay">
+  <div class="alert-box" id="alertBox">
+    <div class="alert-banner" id="alertBanner">⚡ EVENT ACTIVE</div>
+    <div class="alert-body">
+      <span class="alert-icon" id="alertIcon">⚔</span>
+      <div class="alert-event-name" id="alertEventName">—</div>
+      <div class="alert-sub" id="alertSub">—</div>
+      <div class="alert-time-display" id="alertTimeDisplay">--:--</div>
+      <button class="alert-dismiss" onclick="dismissAlert()">[ CONFIRM ]</button>
+    </div>
+  </div>
+</div>
+
+<!-- WARNING TOAST -->
+<div class="warn-toast" id="warnToast">
+  <div class="warn-pulse"></div>
+  <div class="warn-text">
+    <div class="warn-name" id="warnName">—</div>
+    <div class="warn-mins" id="warnMins">in 2 minutes</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  TIMEZONE SETUP
+//  Server = Jerusalem (Asia/Jerusalem)
+//  Local  = user's browser timezone
+// ══════════════════════════════════════════════
+const SERVER_TZ = 'Asia/Jerusalem';
+const LOCAL_TZ  = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// Convert a "HH:MM" server time → "HH:MM" local time
+// We anchor to today's date in server TZ, then read in local TZ
+function serverHMtoLocal(serverHM) {
+  const [sh, sm] = serverHM.split(':').map(Number);
+  // Build a date string that represents today (local date) at the given server time in SERVER_TZ
+  // Strategy: get today's date parts in SERVER_TZ, assemble ISO, parse, convert to local HH:MM
+  const now = new Date();
+  // Get current date in server timezone
+  const serverDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SERVER_TZ, year:'numeric', month:'2-digit', day:'2-digit'
+  }).format(now);
+  // serverDate = "YYYY-MM-DD"
+  // Create a Date object as if it's SERVER_TZ at sh:sm
+  const isoStr = `${serverDate}T${sh.toString().padStart(2,'0')}:${sm.toString().padStart(2,'0')}:00`;
+  // Parse using Temporal-like trick: treat as server TZ
+  const localDate = new Date(
+    new Date(isoStr + 'Z').getTime()
+    + getServerUTCOffset(serverDate, sh, sm)
+  );
+  const lh = localDate.getHours().toString().padStart(2,'0');
+  const lm = localDate.getMinutes().toString().padStart(2,'0');
+  return `${lh}:${lm}`;
+}
+
+// Get offset (ms) between SERVER_TZ and UTC for a given server date+time
+function getServerUTCOffset(dateStr, h, m) {
+  // We create the reference time in UTC and then find what UTC time corresponds
+  // to that wall-clock time in SERVER_TZ
+  // Use Intl to get the UTC offset
+  const testDate = new Date(`${dateStr}T${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:00Z`);
+  const serverParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SERVER_TZ, hour:'2-digit', minute:'2-digit', hour12:false
+  }).formatToParts(testDate);
+  const sH = parseInt(serverParts.find(p=>p.type==='hour').value);
+  const sM = parseInt(serverParts.find(p=>p.type==='minute').value);
+  const diffH = h - sH;
+  const diffM = m - sM;
+  return (diffH * 60 + diffM) * 60 * 1000;
+}
+
+// Convert array of server HH:MM times → local HH:MM times
+function convertTimes(arr) {
+  return arr.map(serverHMtoLocal);
+}
+
+// ══════════════════════════════════════════════
+//  EVENT DATA  (server times)
+// ══════════════════════════════════════════════
+const EVENTS_RAW = [
+  // ── INVASIONS ──
+  {
+    id: 'golden_invasion',
+    name: 'Golden Invasion',
+    cat: 'invasion',
+    icon: '👑',
+    color: 'gold',
+    location: 'All Main Servers',
+    qty: null,
+    note: 'Check your server before participating.',
+    serverTimes: ['00:36','04:36','08:36','12:36','16:36','20:36'],
+    reward: 'Golden Items',
+  },
+
+  // ── BOSSES ──
+  {
+    id: 'white_wizard',
+    name: 'White Wizard',
+    cat: 'boss',
+    icon: '🧙',
+    color: 'blue',
+    location: 'Noria',
+    qty: 1,
+    note: 'Main Servers only.',
+    serverTimes: ['09:45','12:45','15:45','18:45'],
+    reward: 'Rare Items',
+  },
+  {
+    id: 'death_king',
+    name: 'Death King',
+    cat: 'boss',
+    icon: '💀',
+    color: 'red',
+    location: 'Shadow Abyss',
+    qty: 1,
+    note: 'Main Servers only.',
+    serverTimes: ['21:45','00:45','03:45','06:45'],
+    reward: 'Rare Items',
+  },
+  {
+    id: 'zaikan',
+    name: 'Zaikan',
+    cat: 'boss',
+    icon: '🐲',
+    color: 'orange',
+    location: 'Tarkan 2',
+    qty: 3,
+    note: 'Main Servers only.',
+    serverTimes: ['00:55','06:55','12:55','18:55'],
+    reward: 'Rare Items',
+  },
+  {
+    id: 'red_dragon',
+    name: 'Red Dragon',
+    cat: 'boss',
+    icon: '🔴',
+    color: 'red',
+    location: 'Aida',
+    qty: 3,
+    note: 'Main Servers only.',
+    serverTimes: ['08:00','20:00'],
+    reward: 'Rare Items',
+  },
+
+  // ── SPECIAL ──
+  {
+    id: 'cursed_santa',
+    name: 'Cursed Santa',
+    cat: 'special',
+    icon: '🎅',
+    color: 'green',
+    location: 'Devias',
+    qty: 1,
+    note: '',
+    serverTimes: ['02:35','08:35','14:35','20:35'],
+    reward: 'Special Drops',
+  },
+  {
+    id: 'blue_goblin',
+    name: 'Blue Goblin',
+    cat: 'special',
+    icon: '💙',
+    color: 'blue',
+    location: 'Shadow Abyss',
+    qty: 5,
+    note: 'Respawn 10–11h after kill.',
+    serverTimes: [],
+    timerBased: true,
+    reward: 'Special Drops',
+  },
+  {
+    id: 'red_goblin',
+    name: 'Red Goblin',
+    cat: 'special',
+    icon: '❤️',
+    color: 'red',
+    location: 'Shadow Abyss',
+    qty: 4,
+    note: 'Respawn 10–11h after kill.',
+    serverTimes: [],
+    timerBased: true,
+    reward: 'Special Drops',
+  },
+  {
+    id: 'yellow_goblin',
+    name: 'Yellow Goblin',
+    cat: 'special',
+    icon: '💛',
+    color: 'gold',
+    location: 'Shadow Abyss',
+    qty: 4,
+    note: 'Respawn 10–11h after kill.',
+    serverTimes: [],
+    timerBased: true,
+    reward: 'Special Drops',
+  },
+  {
+    id: 'death_bone',
+    name: 'Death Bone',
+    cat: 'special',
+    icon: '🦴',
+    color: 'purple',
+    location: 'Shadow Abyss',
+    qty: 10,
+    note: '',
+    serverTimes: ['21:45','00:45','03:45','06:45'],
+    reward: 'Special Drops',
+  },
+  {
+    id: 'cursed_goblin',
+    name: 'Cursed Goblin',
+    cat: 'special',
+    icon: '☠️',
+    color: 'orange',
+    location: 'Devias',
+    qty: 10,
+    note: '1,5kk Zen',
+    serverTimes: ['02:35','08:35','14:35','20:35'],
+    reward: '1,5kk Zen',
+  },
+  {
+    id: 'dest_ogre_archer',
+    name: 'Destructive Ogre Archer',
+    cat: 'special',
+    icon: '🏹',
+    color: 'cyan',
+    location: 'Noria',
+    qty: 5,
+    note: '',
+    serverTimes: ['09:45','12:45','15:45','18:45'],
+    reward: 'Special Drops',
+  },
+  {
+    id: 'dest_ogre_soldier',
+    name: 'Destructive Ogre Soldier',
+    cat: 'special',
+    icon: '⚔️',
+    color: 'cyan',
+    location: 'Noria',
+    qty: 5,
+    note: '',
+    serverTimes: ['09:45','12:45','15:45','18:45'],
+    reward: 'Special Drops',
+  },
+
+  // ── MINI-GAMES ──
+  {
+    id: 'blood_castle',
+    name: 'Blood Castle',
+    cat: 'minigame',
+    icon: '🩸',
+    color: 'red',
+    location: 'Event Square',
+    qty: 15,
+    note: 'Craft Invisibility Cloak (Archangel Scroll + Blood Bone + Jewel of Chaos). Entry via Messenger of Archangel in Devias/Event Square. Duration: 15 min. Limit: 12x/day.',
+    serverTimes: ['00:30','01:30','02:30','03:30','04:30','05:30','06:30','07:30','08:30','09:30','10:30','11:30','12:30','13:30','14:30','15:30','16:30','17:30','18:30','19:30','20:30','21:30','22:30','23:30'],
+    reward: 'EXP + Jewels + Exc Items',
+  },
+  {
+    id: 'devil_square',
+    name: 'Devil Square',
+    cat: 'minigame',
+    icon: '😈',
+    color: 'purple',
+    location: 'Event Square (Charon)',
+    qty: 10,
+    note: 'Craft Devil Square Invitation (Devil Key + Devil Eye + Jewel of Chaos). Entry via Charon in Noria/Event Square. Duration: 20 min. Limit: 4x/day.',
+    serverTimes: ['00:30','02:30','04:30','06:30','08:30','10:30','12:30','14:30','16:30','18:30','20:30','22:30'],
+    reward: 'EXP + Zen + Rare Items',
+  },
+  {
+    id: 'lunar_rabbit',
+    name: 'Lunar Rabbit',
+    cat: 'dreamland',
+    icon: '🐰',
+    color: 'pink',
+    location: 'Dreamland',
+    qty: 50,
+    note: 'Collect 10 → exchange at NPC Cherry Blossom.',
+    serverTimes: ['05:25','11:25','17:25','23:25'],
+    reward: '80% Common Items / 20% Rare',
+  },
+  {
+    id: 'fire_flame_ghost',
+    name: 'Fire Flame Ghost',
+    cat: 'dreamland',
+    icon: '🔥',
+    color: 'orange',
+    location: 'Dreamland',
+    qty: 50,
+    note: 'Collect 30 → exchange at NPC Cherry Blossom.',
+    serverTimes: ['01:25','07:25','13:25','19:25'],
+    reward: '80% Common Items / 20% Rare',
+  },
+  {
+    id: 'pouch_blessing',
+    name: 'Pouch of Blessing',
+    cat: 'dreamland',
+    icon: '💝',
+    color: 'pink',
+    location: 'Dreamland',
+    qty: 50,
+    note: 'Collect 50 → exchange at NPC Cherry Blossom.',
+    serverTimes: ['03:25','09:25','15:25','21:25'],
+    reward: '80% Common Items / 20% Rare',
+  },
+];
+
+// ══════════════════════════════════════════════
+//  PRE-COMPUTE local times for each event
+// ══════════════════════════════════════════════
+const EVENTS = EVENTS_RAW.map(ev => ({
+  ...ev,
+  localTimes: ev.timerBased ? [] : convertTimes(ev.serverTimes)
+}));
+
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+let soundEnabled = true;
+let audioCtx = null;
+let alertActive = false;
+let alertLoopTO = null;
+let warnLoopTO  = null;
+let warnActive  = false;
+let currentCat  = 'all';
+
+// Per-event alert enabled (default: all enabled)
+const alertEnabled = {};
+EVENTS.forEach(ev => alertEnabled[ev.id] = !ev.timerBased);
+
+// Track last fired to avoid double-triggers
+const lastFired   = {}; // id -> "HH:MM" last alerted
+const lastWarned  = {}; // id -> "HH:MM" last warned
+
+// Display TZ badge
+document.getElementById('tzBadge').textContent = LOCAL_TZ.replace('_',' ');
+
+// ══════════════════════════════════════════════
+//  AUDIO
+// ══════════════════════════════════════════════
+function ctx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playAlertCycle(color) {
+  if (!soundEnabled) return 1200;
+  const c = ctx();
+  const freqMap = {
+    gold:[880,1320,880], red:[660,880,1100], blue:[440,660,880],
+    green:[550,770,990], purple:[740,1100,740], orange:[600,900,1200],
+    cyan:[500,750,1000], pink:[700,1050,700],
+  };
+  const freqs = freqMap[color] || freqMap.gold;
+  [[freqs[0],0,.12],[freqs[0],.16,.12],[freqs[1],.32,.22],[freqs[2]-.2*freqs[2],.56,.08],[freqs[1],.66,.30]]
+    .forEach(([freq,start,dur])=>{
+      const o=c.createOscillator(), g=c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type='square';
+      o.frequency.setValueAtTime(freq, c.currentTime+start);
+      g.gain.setValueAtTime(.16, c.currentTime+start);
+      g.gain.exponentialRampToValueAtTime(.001, c.currentTime+start+dur);
+      o.start(c.currentTime+start); o.stop(c.currentTime+start+dur+.05);
+    });
+  return 1200;
+}
+
+function playWarnPing(color) {
+  if (!soundEnabled) return;
+  const c = ctx();
+  const freq = {gold:660,red:550,blue:440,green:550,purple:622,orange:587,cyan:523,pink:698}[color]||660;
+  [[freq,0],[freq*1.5,.18]].forEach(([f,s])=>{
+    const o=c.createOscillator(), g=c.createGain();
+    o.connect(g); g.connect(c.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(f, c.currentTime+s);
+    g.gain.setValueAtTime(.09, c.currentTime+s);
+    g.gain.exponentialRampToValueAtTime(.001, c.currentTime+s+.35);
+    o.start(c.currentTime+s); o.stop(c.currentTime+s+.4);
+  });
+}
+
+function playBeep(){
+  if(!soundEnabled)return;
+  const c=ctx(), o=c.createOscillator(), g=c.createGain();
+  o.connect(g); g.connect(c.destination);
+  o.type='sine'; o.frequency.setValueAtTime(440,c.currentTime);
+  g.gain.setValueAtTime(.07,c.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.12);
+  o.start(c.currentTime); o.stop(c.currentTime+.15);
+}
+
+function startAlertLoop(color){
+  alertActive=true;
+  function loop(){
+    if(!alertActive)return;
+    playAlertCycle(color);
+    alertLoopTO=setTimeout(loop,1400);
+  }
+  loop();
+}
+function stopAlertLoop(){ alertActive=false; clearTimeout(alertLoopTO); }
+
+let warnColor='gold';
+function startWarnLoop(color){
+  if(warnActive)return;
+  warnActive=true; warnColor=color;
+  function loop(){
+    if(!warnActive)return;
+    playWarnPing(warnColor);
+    warnLoopTO=setTimeout(loop,3000);
+  }
+  loop();
+}
+function stopWarnLoop(){ warnActive=false; clearTimeout(warnLoopTO); }
+
+// ══════════════════════════════════════════════
+//  TOGGLE SOUND
+// ══════════════════════════════════════════════
+function toggleSound(){
+  soundEnabled=!soundEnabled;
+  const btn=document.getElementById('soundBtn');
+  btn.textContent = soundEnabled ? '🔊 SOUND' : '🔇 SOUND';
+  btn.classList.toggle('on', soundEnabled);
+  if(soundEnabled){ ctx(); playBeep(); }
+}
+
+// ══════════════════════════════════════════════
+//  SHOW / DISMISS ALERT
+// ══════════════════════════════════════════════
+function showAlert(ev, localTime){
+  stopWarnLoop();
+  hideWarnToast();
+  const overlay = document.getElementById('alertOverlay');
+  const box     = document.getElementById('alertBox');
+  document.getElementById('alertIcon').textContent      = ev.icon;
+  document.getElementById('alertEventName').textContent = ev.name;
+  document.getElementById('alertSub').textContent       = `📍 ${ev.location}${ev.qty?' · Qty: '+ev.qty:''}`;
+  document.getElementById('alertTimeDisplay').textContent = localTime;
+  document.getElementById('alertBanner').textContent    = `⚡ ${ev.cat.toUpperCase()} — NOW!`;
+  document.getElementById('alertBanner').className      = `alert-banner c-${ev.color}`;
+  box.style.borderColor = `var(--${ev.color})`;
+  box.style.boxShadow   = `0 0 60px rgba(var(--${ev.color}-rgb,.3),0.3), 0 0 0 1px rgba(255,255,255,0.08)`;
+  overlay.classList.add('show');
+  startAlertLoop(ev.color);
+  // flash
+  document.body.style.transition='background .1s';
+  document.body.style.background=`color-mix(in srgb, var(--bg) 92%, var(--${ev.color}))`;
+  setTimeout(()=>{ document.body.style.background=''; }, 500);
+}
+
+function dismissAlert(){
+  stopAlertLoop();
+  document.getElementById('alertOverlay').classList.remove('show');
+}
+
+// ══════════════════════════════════════════════
+//  WARN TOAST
+// ══════════════════════════════════════════════
+let warnToastEv = null;
+function showWarnToast(ev, localTime, minsLeft){
+  warnToastEv = ev;
+  document.getElementById('warnName').textContent = `${ev.icon} ${ev.name}`;
+  document.getElementById('warnMins').textContent = `in ~${minsLeft} min · ${localTime} · ${ev.location}`;
+  document.getElementById('warnToast').classList.add('show');
+  startWarnLoop(ev.color);
+}
+function hideWarnToast(){
+  document.getElementById('warnToast').classList.remove('show');
+  stopWarnLoop();
+}
+
+// ══════════════════════════════════════════════
+//  TIME UTILS
+// ══════════════════════════════════════════════
+function nowHM(){ // returns {h, m, totalMins}
+  const n=new Date();
+  return { h:n.getHours(), m:n.getMinutes(), s:n.getSeconds(),
+           total: n.getHours()*60+n.getMinutes() };
+}
+
+function hmToMins(hm){
+  const [h,m]=hm.split(':').map(Number);
+  return h*60+m;
+}
+
+// Minutes until a given HH:MM (local), wrapping midnight
+function minsUntil(hm){
+  const now=new Date();
+  const nowM=now.getHours()*60+now.getMinutes();
+  const nowS=now.getSeconds();
+  let diff = hmToMins(hm)*60 - (nowM*60+nowS);
+  if(diff<0) diff+=86400;
+  return diff; // in seconds
+}
+
+// ══════════════════════════════════════════════
+//  COMPUTE UPCOMING EVENTS
+// ══════════════════════════════════════════════
+function getUpcoming(count=8){
+  const candidates=[];
+  EVENTS.forEach(ev=>{
+    if(!alertEnabled[ev.id]) return;
+    if(ev.timerBased) return;
+    ev.localTimes.forEach(lt=>{
+      const secs=minsUntil(lt);
+      candidates.push({ ev, localTime:lt, secs });
+    });
+  });
+  candidates.sort((a,b)=>a.secs-b.secs);
+  return candidates.slice(0,count);
+}
+
+function getAllUpcomingOnce(){
+  // All events (including disabled), one next occurrence each, for schedule display
+  const candidates=[];
+  EVENTS.forEach(ev=>{
+    if(ev.timerBased||ev.localTimes.length===0) return;
+    let best=null;
+    ev.localTimes.forEach(lt=>{
+      const secs=minsUntil(lt);
+      if(!best||secs<best.secs) best={ev,localTime:lt,secs};
+    });
+    if(best) candidates.push(best);
+  });
+  candidates.sort((a,b)=>a.secs-b.secs);
+  return candidates;
+}
+
+function fmtSecs(totalSecs){
+  const h=Math.floor(totalSecs/3600);
+  const m=Math.floor((totalSecs%3600)/60);
+  const s=totalSecs%60;
+  if(h>0) return `${h}h ${m.toString().padStart(2,'0')}m`;
+  return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
+function fmtSecsLong(totalSecs){
+  const h=Math.floor(totalSecs/3600);
+  const m=Math.floor((totalSecs%3600)/60);
+  const s=totalSecs%60;
+  return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
+// ══════════════════════════════════════════════
+//  RENDER CARDS
+// ══════════════════════════════════════════════
+function filterCat(cat){
+  currentCat=cat;
+  document.querySelectorAll('.cat-tab').forEach(t=>t.classList.toggle('active',t.dataset.cat===cat));
+  renderCards();
+}
+
+function renderCards(){
+  const grid=document.getElementById('eventsGrid');
+  const filtered = EVENTS.filter(ev=> currentCat==='all' || ev.cat===currentCat);
+  grid.innerHTML = filtered.map(ev=>{
+    const on = alertEnabled[ev.id];
+    const times = ev.timerBased
+      ? `<div style="font-size:10px;color:var(--text-dim);letter-spacing:1px;margin-bottom:8px;">⏱ Respawn 10–11h after kill</div>`
+      : `<div class="card-times">${ev.localTimes.map(lt=>{
+          const secs=minsUntil(lt);
+          const soon=secs<600;
+          return `<div class="time-chip ${soon?'chip-'+ev.color+' soon':'chip-'+ev.color}" title="${secs<3600?fmtSecs(secs)+' remaining':''}">${lt}</div>`;
+        }).join('')}</div>`;
+
+    return `<div class="event-card ${on?'border-'+ev.color:''} ${on?'':'disabled'}" id="card-${ev.id}">
+      <div class="card-top">
+        <div class="card-icon">${ev.icon}</div>
+        <div class="card-info">
+          <div class="card-name c-${ev.color}">${ev.name}</div>
+          <div class="card-sub">📍 ${ev.location}${ev.qty?' · ×'+ev.qty:''}</div>
+        </div>
+        ${ev.timerBased?'':
+          `<div class="card-toggle ${on?'on c-'+ev.color:''}" id="tog-${ev.id}" title="${on?'Disable alert':'Enable alert'}" onclick="toggleAlert('${ev.id}')"></div>`
+        }
+      </div>
+      ${times}
+      <div class="card-footer">
+        <span>🏆 ${ev.reward}</span>
+        ${ev.note?`<span title="${ev.note}">ℹ️</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAlert(id){
+  alertEnabled[id]=!alertEnabled[id];
+  // Re-render just this card's toggle
+  const tog=document.getElementById('tog-'+id);
+  const card=document.getElementById('card-'+id);
+  const ev=EVENTS.find(e=>e.id===id);
+  if(tog){
+    const on=alertEnabled[id];
+    tog.className=`card-toggle ${on?'on c-'+ev.color:''}`;
+    card.className=`event-card ${on?'border-'+ev.color:''} ${on?'':'disabled'}`;
+    // Update time chips
+    renderCards(); // simplest
+  }
+}
+
+// ══════════════════════════════════════════════
+//  RENDER UPCOMING LIST
+// ══════════════════════════════════════════════
+function renderUpcoming(){
+  const list=document.getElementById('upcomingList');
+  const items=getAllUpcomingOnce().slice(0,8);
+  const now=new Date();
+  const nowM=now.getHours()*60+now.getMinutes();
+
+  list.innerHTML = items.map((item,i)=>{
+    const {ev,localTime,secs}=item;
+    const on=alertEnabled[ev.id]&&!ev.timerBased;
+    const isNext=i===0&&on;
+    const isWarn=secs<120&&secs>0;
+    return `<div class="upcoming-item ${isNext?'is-next':''} ${isWarn?'is-warn':''} ${on?'':'ev-disabled'}">
+      <div class="ev-dot" style="background:var(--${ev.color})${isWarn?';box-shadow:0 0 8px var(--'+ev.color+')':''}"></div>
+      <div>
+        <div class="ev-name">${ev.icon} ${ev.name}</div>
+        <div class="ev-loc">${ev.location}</div>
+      </div>
+      <div class="ev-time-col">
+        <div class="ev-local-time c-${ev.color}">${localTime}</div>
+        <div class="ev-countdown">${fmtSecs(secs)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════
+//  NEXT EVENT PANEL
+// ══════════════════════════════════════════════
+function updateNextPanel(){
+  const upcoming=getUpcoming(1);
+  if(!upcoming.length) return;
+  const {ev, localTime, secs}=upcoming[0];
+  document.getElementById('nextName').textContent=`${ev.icon} ${ev.name}`;
+  document.getElementById('nextName').className=`next-name c-${ev.color}`;
+  document.getElementById('nextMeta').textContent=`📍 ${ev.location} · ${localTime}`;
+  document.getElementById('nextCountdown').textContent=fmtSecsLong(secs);
+  // Progress: percent through 6h cycle max (or time to next)
+  const cycleLen = 6*3600;
+  const pct = Math.max(0, Math.min(100, (1 - secs/cycleLen)*100));
+  const bar = document.getElementById('nextProgress');
+  bar.style.width = pct+'%';
+  bar.className = `progress-fill bg-${ev.color}`;
+}
+
+// ══════════════════════════════════════════════
+//  CLOCKS
+// ══════════════════════════════════════════════
+function updateClocks(){
+  const now=new Date();
+  const lh=now.getHours().toString().padStart(2,'0');
+  const lm=now.getMinutes().toString().padStart(2,'0');
+  const ls=now.getSeconds().toString().padStart(2,'0');
+  document.getElementById('localClock').textContent=`${lh}:${lm}:${ls}`;
+
+  const sp=new Intl.DateTimeFormat('en-US',{timeZone:SERVER_TZ,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(now);
+  const sh=sp.find(p=>p.type==='hour').value;
+  const sm=sp.find(p=>p.type==='minute').value;
+  const ss=sp.find(p=>p.type==='second').value;
+  document.getElementById('serverClock').textContent=`${sh}:${sm}:${ss}`;
+}
+
+// ══════════════════════════════════════════════
+//  CHECK ALERTS EACH SECOND
+// ══════════════════════════════════════════════
+function checkAlerts(){
+  const now=new Date();
+  const hm=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  const secs=now.getSeconds();
+
+  // Don't trigger if alert already showing
+  if(alertActive) return;
+
+  // Check each enabled event
+  for(const ev of EVENTS){
+    if(!alertEnabled[ev.id]||ev.timerBased) continue;
+
+    // Full alert: exact minute, first 5 secs
+    for(const lt of ev.localTimes){
+      if(lt===hm && secs<5 && lastFired[ev.id]!==lt){
+        lastFired[ev.id]=lt;
+        stopWarnLoop(); hideWarnToast();
+        showAlert(ev, lt);
+        return; // show one at a time
+      }
+    }
+  }
+
+  // 2-min warning (only if no alert showing)
+  if(!alertActive){
+    const twoMin=new Date(now.getTime()+2*60*1000);
+    const wHM=twoMin.getHours().toString().padStart(2,'0')+':'+twoMin.getMinutes().toString().padStart(2,'0');
+
+    for(const ev of EVENTS){
+      if(!alertEnabled[ev.id]||ev.timerBased) continue;
+      for(const lt of ev.localTimes){
+        if(lt===wHM && lastWarned[ev.id]!==lt){
+          lastWarned[ev.id]=lt;
+          showWarnToast(ev, lt, 2);
+          return;
+        }
+      }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+//  MAIN TICK
+// ══════════════════════════════════════════════
+function tick(){
+  updateClocks();
+  updateNextPanel();
+  renderUpcoming();
+  checkAlerts();
+  // Re-render cards every 30s to refresh "soon" chips
+  if(new Date().getSeconds()%30===0) renderCards();
+}
+
+// Init
+document.addEventListener('click', ()=>{ if(soundEnabled) try{ctx();}catch(e){} }, {once:true});
+renderCards();
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
